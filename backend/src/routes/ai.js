@@ -1,9 +1,10 @@
 import express from 'express';
 import { generateHeadline } from '../services/ai/linkedinHelper.js';
 import { verifyToken } from '../middleware/auth.js';
+import { extractAIProvider } from '../middleware/aiKey.js';
 const router = express.Router();
 
-router.post('/linkedin-headline', verifyToken, async (req, res) => {
+router.post('/linkedin-headline', verifyToken, extractAIProvider, async (req, res) => {
     try {
         const portfolioData = req.body;
 
@@ -15,7 +16,7 @@ router.post('/linkedin-headline', verifyToken, async (req, res) => {
             });
         }
 
-        const headlines = await generateHeadline(portfolioData);
+        const headlines = await generateHeadline(portfolioData, req.aiProvider);
 
         res.status(200).json({
             success: true,
