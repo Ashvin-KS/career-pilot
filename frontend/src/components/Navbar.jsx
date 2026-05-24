@@ -381,9 +381,7 @@ export default function Navbar() {
                     {label}
                   </Link>
                 ))}
-                    {label}
-                  </Link>
-                ))}
+               
 
               {user ? (
                 <button
