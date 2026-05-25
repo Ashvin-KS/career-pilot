@@ -5,8 +5,10 @@ import { asyncHandler, ApiError } from '../middleware/errorHandler.js';
 import { enhanceSection } from '../services/ai/portfolioContentEnhancer.js';
 import { generateRobotsTxt, generateSitemapXml } from '../utils/sitemapGenerator.js';
 import { analyzeAccessibility } from '../services/accessibilityChecker.js';
+import mongoose from 'mongoose';
 import PortfolioVersion from '../models/PortfolioVersion.model.js';
 import UserProfile from '../models/UserProfile.model.js';
+import { getObjectDiff, applyDiff } from '../utils/diff.js';
 
 const router = express.Router();
 
@@ -33,7 +35,55 @@ const assertValidPortfolioSlug = (slug) => {
   }
 };
 
-import { getObjectDiff } from '../utils/diff.js';
+// Helper to reconstruct full state from versions
+const reconstructVersion = async (portfolioId, targetVersionNumber, isConnected) => {
+  if (isConnected) {
+    const closestSnapshot = await PortfolioVersion.findOne({
+      portfolioId,
+      version: { $lte: targetVersionNumber },
+      snapshot: { $ne: null }
+    }).sort({ version: -1 });
+
+    if (!closestSnapshot) return null;
+
+    let content = closestSnapshot.snapshot;
+
+    if (closestSnapshot.version < targetVersionNumber) {
+      const intermediateDiffs = await PortfolioVersion.find({
+        portfolioId,
+        version: { $gt: closestSnapshot.version, $lte: targetVersionNumber }
+      }).sort({ version: 1 });
+
+      for (const v of intermediateDiffs) {
+        if (v.changes) content = applyDiff(content, v.changes);
+      }
+    }
+    return content;
+  } else {
+    const versions = inMemoryStore.get(portfolioId) || [];
+    const targetVersions = versions.filter(v => v.version <= targetVersionNumber);
+    if (targetVersions.length === 0) return null;
+
+    // Find latest snapshot
+    let snapshotIdx = -1;
+    for (let i = targetVersions.length - 1; i >= 0; i--) {
+      if (targetVersions[i].snapshot) {
+        snapshotIdx = i;
+        break;
+      }
+    }
+
+    if (snapshotIdx === -1) return null;
+
+    let content = targetVersions[snapshotIdx].snapshot;
+    for (let i = snapshotIdx + 1; i < targetVersions.length; i++) {
+      if (targetVersions[i].changes) {
+        content = applyDiff(content, targetVersions[i].changes);
+      }
+    }
+    return content;
+  }
+};
 
 /**
  * POST /api/portfolio/:id/save
@@ -42,13 +92,24 @@ router.post('/:id/save', verifyToken, asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { content } = req.body;
 
+  // Authorization check (IDOR Protection)
+  if (req.user.uid !== id) {
+    throw new ApiError(403, 'Unauthorized access to this portfolio.');
+  }
+
   if (!content) {
     throw new ApiError(400, 'Content is required for saving.');
   }
 
-  // 1. Get latest version to calculate diff
-  const latestVersion = await PortfolioVersion.findOne({ portfolioId: id })
-    .sort({ version: -1 });
+  const isConnected = mongoose.connection.readyState === 1;
+  let latestVersion;
+
+  if (isConnected) {
+    latestVersion = await PortfolioVersion.findOne({ portfolioId: id }).sort({ version: -1 });
+  } else {
+    const portfolioVersions = inMemoryStore.get(id) || [];
+    latestVersion = portfolioVersions[portfolioVersions.length - 1];
+  }
   
   const newVersionNumber = (latestVersion?.version || 0) + 1;
 
@@ -56,48 +117,57 @@ router.post('/:id/save', verifyToken, asyncHandler(async (req, res) => {
   let snapshot = null;
 
   if (!latestVersion) {
-    // First version, must be a snapshot
     snapshot = content;
   } else {
-    // Calculate diff from latest version's snapshot
-    // Note: In a real app we'd reconstruct the snapshot if latestVersion only has changes
-    // But for this simple implementation, we'll store a snapshot every 10th version
+    // Correctly reconstruct old content for diffing
+    const oldContent = await reconstructVersion(id, latestVersion.version, isConnected) || {};
+    changes = getObjectDiff(oldContent, content);
+    
+    if (!changes) {
+      return res.status(200).json({
+        success: true,
+        message: 'No changes detected. Version not created.',
+        version: latestVersion.version
+      });
+    }
+
+    // Every 10th version gets a full snapshot for efficiency
     if (newVersionNumber % 10 === 0) {
       snapshot = content;
-    } else {
-      // Reconstruct content of latest version (simplified here)
-      // For now, we assume we have a way to get the 'current' full state
-      // We'll use the incoming 'content' as the new state and latestVersion.snapshot as old if available
-      const oldContent = latestVersion.snapshot || {}; // Simplified
-      changes = getObjectDiff(oldContent, content);
-      
-      // If no changes, just return
-      if (!changes) {
-        return res.status(200).json({
-          success: true,
-          message: 'No changes detected. Version not created.',
-          version: latestVersion.version
-        });
-      }
     }
   }
 
-  // 2. Create the new version
-  await PortfolioVersion.create({
+  const versionData = {
     portfolioId: id,
     version: newVersionNumber,
     changes,
     snapshot,
-    createdBy: req.user.uid
-  });
+    createdBy: req.user.uid,
+  };
 
-  // 3. Prune old versions if > 50
-  if (newVersionNumber > 50) {
-    const thresholdVersion = newVersionNumber - 50;
-    await PortfolioVersion.deleteMany({
-      portfolioId: id,
-      version: { $lte: thresholdVersion }
-    });
+  if (isConnected) {
+    try {
+      await PortfolioVersion.create(versionData);
+    } catch (error) {
+      if (error.code === 11000) {
+        throw new ApiError(409, 'A save request is already in progress. Please try again.');
+      }
+      throw error;
+    }
+    
+    // Prune old versions (keep latest 50)
+    if (newVersionNumber > 50) {
+      const thresholdVersion = newVersionNumber - 50;
+      await PortfolioVersion.deleteMany({
+        portfolioId: id,
+        version: { $lte: thresholdVersion }
+      });
+    }
+  } else {
+    let portfolioVersions = inMemoryStore.get(id) || [];
+    portfolioVersions.push({ _id: `mock-${Date.now()}`, ...versionData, createdAt: new Date() });
+    if (portfolioVersions.length > 50) portfolioVersions.shift();
+    inMemoryStore.set(id, portfolioVersions);
   }
 
   res.status(200).json({
@@ -113,10 +183,26 @@ router.post('/:id/save', verifyToken, asyncHandler(async (req, res) => {
  */
 router.get('/:id/versions', verifyToken, asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const versions = await PortfolioVersion.find({ portfolioId: id })
-    .sort({ version: -1 })
-    .select('-snapshot -changes') // Just metadata
-    .limit(50);
+
+  // Authorization check
+  if (req.user.uid !== id) {
+    throw new ApiError(403, 'Unauthorized access to version history.');
+  }
+
+  const isConnected = mongoose.connection.readyState === 1;
+
+  let versions;
+  if (isConnected) {
+    versions = await PortfolioVersion.find({ portfolioId: id })
+      .sort({ version: -1 })
+      .select('-snapshot -changes')
+      .limit(50);
+  } else {
+    versions = (inMemoryStore.get(id) || [])
+      .slice()
+      .reverse()
+      .map(({ snapshot, changes, ...v }) => v);
+  }
 
   res.status(200).json({
     success: true,
@@ -130,20 +216,74 @@ router.get('/:id/versions', verifyToken, asyncHandler(async (req, res) => {
 router.post('/:id/restore/:versionId', verifyToken, asyncHandler(async (req, res) => {
   const { id, versionId } = req.params;
 
-  const versionToRestore = await PortfolioVersion.findById(versionId);
+  // Authorization check
+  if (req.user.uid !== id) {
+    throw new ApiError(403, 'Unauthorized access to restore this portfolio.');
+  }
+
+  const isConnected = mongoose.connection.readyState === 1;
+
+  let versionToRestore;
+  if (isConnected) {
+    if (!mongoose.Types.ObjectId.isValid(versionId)) {
+      throw new ApiError(400, 'Invalid version ID format.');
+    }
+    versionToRestore = await PortfolioVersion.findById(versionId);
+  } else {
+    const portfolioVersions = inMemoryStore.get(id) || [];
+    versionToRestore = portfolioVersions.find(v => v._id === versionId);
+  }
+
   if (!versionToRestore || versionToRestore.portfolioId !== id) {
     throw new ApiError(404, 'Version not found.');
   }
 
-  // If it's a diff, we'd need to reconstruct. For this task, returning the snapshot or diff 
-  // is sufficient to show the "restore" capability.
-  const data = versionToRestore.snapshot || versionToRestore.changes;
+  // RECONSTRUCT full data from version
+  const restoredContent = await reconstructVersion(id, versionToRestore.version, isConnected);
+  
+  if (!restoredContent) {
+    throw new ApiError(500, 'Could not reconstruct version data.');
+  }
+
+  // PERSIST restored content back to source of truth (UserProfile)
+  if (isConnected) {
+    await UserProfile.findOneAndUpdate(
+      { uid: id },
+      { $set: restoredContent },
+      { upsert: true }
+    );
+
+    // Create a "revert" version automatically
+    const latest = await PortfolioVersion.findOne({ portfolioId: id }).sort({ version: -1 });
+    const newVersion = (latest?.version || 0) + 1;
+    await PortfolioVersion.create({
+      portfolioId: id,
+      version: newVersion,
+      snapshot: restoredContent,
+      createdBy: req.user.uid,
+      message: `Restored to version ${versionToRestore.version}`
+    });
+  } else {
+    // In-memory update is implicit as we don't have a separate UserProfile store here,
+    // but we add a new version to simulate the revert event.
+    let portfolioVersions = inMemoryStore.get(id) || [];
+    const newVersion = (portfolioVersions[portfolioVersions.length - 1]?.version || 0) + 1;
+    portfolioVersions.push({
+      _id: `mock-${Date.now()}`,
+      portfolioId: id,
+      version: newVersion,
+      snapshot: restoredContent,
+      createdBy: req.user.uid,
+      createdAt: new Date()
+    });
+    inMemoryStore.set(id, portfolioVersions);
+  }
   
   res.status(200).json({
     success: true,
-    message: `Restored to version ${versionToRestore.version}`,
-    data,
-    type: versionToRestore.snapshot ? 'snapshot' : 'diff'
+    message: `Successfully restored to version ${versionToRestore.version}`,
+    version: versionToRestore.version,
+    data: restoredContent
   });
 }));
 

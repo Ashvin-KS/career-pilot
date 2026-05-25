@@ -24,7 +24,7 @@ const portfolioVersionSchema = new mongoose.Schema({
   },
 }, { timestamps: { createdAt: true, updatedAt: false } });
 
-// Index for quick retrieval of versions for a portfolio
-portfolioVersionSchema.index({ portfolioId: 1, version: -1 });
+// Index for quick retrieval and uniqueness of versions for a portfolio
+portfolioVersionSchema.index({ portfolioId: 1, version: -1 }, { unique: true });
 
 export default mongoose.model('PortfolioVersion', portfolioVersionSchema);
