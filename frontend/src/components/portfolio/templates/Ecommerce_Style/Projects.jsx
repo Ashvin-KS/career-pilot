@@ -88,7 +88,7 @@ export default function Projects() {
             <ShoppingCart size={18} className="text-stone-700" />
 
             <span className="text-sm font-semibold text-stone-700">
-              {cart.length} items in cart
+                {cart.length} {cart.length === 1 ? 'item' : 'items'} in cart
             </span>
 
           </div>
