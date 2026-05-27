@@ -1,30 +1,34 @@
 import React, { useMemo } from 'react';
 import { motion } from 'framer-motion';
 
-const tileVariants = {
-  hidden: ({ x, y, rot }) => ({ opacity: 0, x, y, rotate: rot, scale: 0.5 }),
-  show: ({ delay }) => ({
-    opacity: 1,
-    x: 0,
-    y: 0,
-    rotate: 0,
-    scale: 1,
-    transition: { duration: 0.7, delay, ease: [0.22, 1, 0.36, 1] },
-  }),
-};
+/* ─── physics-flavoured spring configs ─── */
+const SPRING_CONFIGS = [
+  { type: 'spring', stiffness: 90, damping: 20, mass: 1.0 },
+  { type: 'spring', stiffness: 130, damping: 26, mass: 1.35 },
+  { type: 'spring', stiffness: 70, damping: 16, mass: 0.85 },
+  { type: 'spring', stiffness: 160, damping: 32, mass: 1.7 },
+];
 
 const MosaicImage = ({ src, alt, rows = 5, cols = 5, className = '' }) => {
   const tiles = useMemo(() => {
     const temp = [];
 
-    for (let r = 0; r < rows; r += 1) {
-      for (let c = 0; c < cols; c += 1) {
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        /* ── throw each tile from a random screen quadrant ── */
+        const quadX = c < cols / 2 ? -1 : 1;
+        const quadY = r < rows / 2 ? -1 : 1;
         temp.push({
-          r,
-          c,
-          x: (Math.random() - 0.5) * 400,
-          y: (Math.random() - 0.5) * 400,
-          rot: (Math.random() - 0.5) * 180,
+          r, c,
+          /* distance varies wildly so tiles arrive at different times */
+          x: quadX * (220 + Math.random() * 350),
+          y: quadY * (180 + Math.random() * 280),
+          rot: (Math.random() - 0.5) * 240,
+          scale: 0.2 + Math.random() * 0.5,
+          /* delay clustered around distance from centre, not row order */
+          delay: (Math.abs(r - rows / 2) + Math.abs(c - cols / 2)) * 0.075
+            + Math.random() * 0.18,
+          spring: SPRING_CONFIGS[Math.floor(Math.random() * SPRING_CONFIGS.length)],
         });
       }
     }
@@ -42,18 +46,22 @@ const MosaicImage = ({ src, alt, rows = 5, cols = 5, className = '' }) => {
       }}
       initial="hidden"
       whileInView="show"
-      viewport={{ once: true, amount: 0.2 }}
+      viewport={{ once: true, amount: 0.15 }}
     >
       <img src={src} alt={alt} className="sr-only" />
 
       {tiles.map((tile) => {
-        const rowMajorDelay = ((tile.r * cols) + tile.c) * 0.03;
-
         return (
           <motion.div
             key={`${tile.r}-${tile.c}`}
-            custom={{ x: tile.x, y: tile.y, rot: tile.rot, delay: rowMajorDelay }}
-            variants={tileVariants}
+            initial={{ opacity: 0, x: tile.x, y: tile.y, rotate: tile.rot, scale: tile.scale }}
+            variants={{
+              hidden: {},
+              show: {
+                opacity: 1, x: 0, y: 0, rotate: 0, scale: 1,
+                transition: { ...tile.spring, delay: tile.delay },
+              },
+            }}
             className="relative overflow-hidden shadow-sm"
           >
             <motion.img

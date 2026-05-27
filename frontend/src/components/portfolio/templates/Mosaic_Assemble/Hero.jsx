@@ -1,93 +1,88 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Github, Linkedin, Twitter, Mail } from 'lucide-react';
 
 const Hero = ({ data = {}, socials = {} }) => {
-  const titleLetters = (data.name || '').split('');
-  const letterOffsets = useMemo(
-    () =>
-      titleLetters.map(() => ({
-        y: Math.random() * 200 - 100,
-        x: Math.random() * 200 - 100,
-        rotate: Math.random() * 90,
-      })),
-    [titleLetters.length, data.name],
+  const [viewportWidth, setViewportWidth] = useState(
+    typeof window !== 'undefined' ? window.innerWidth : 1200,
   );
+
+  useEffect(() => {
+    const onResize = () => setViewportWidth(window.innerWidth);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  const nameWidth = useMemo(() => Math.max(320, Math.min(980, viewportWidth - 32)), [viewportWidth]);
+  const titleWidth = useMemo(() => Math.max(260, Math.min(760, viewportWidth - 40)), [viewportWidth]);
+
+  const socialLinks = [
+    { key: 'github', href: socials.github, label: 'GitHub profile', icon: Github },
+    { key: 'linkedin', href: socials.linkedin, label: 'LinkedIn profile', icon: Linkedin },
+    { key: 'twitter', href: socials.twitter, label: 'Twitter profile', icon: Twitter },
+    { key: 'email', href: socials.email ? `mailto:${socials.email}` : null, label: 'Email', icon: Mail },
+  ].filter((s) => s.href);
 
   return (
     <header className="min-h-screen flex flex-col items-center justify-center relative px-6 z-10">
-      <div className="text-center max-w-6xl mx-auto">
-        <h1 className="text-6xl md:text-8xl font-black mb-4 flex flex-wrap justify-center overflow-hidden py-4">
-          {titleLetters.map((letter, i) => (
-            <motion.span
-              key={`${letter}-${i}`}
-              initial={{
-                opacity: 0,
-                y: letterOffsets[i]?.y ?? 0,
-                x: letterOffsets[i]?.x ?? 0,
-                rotate: letterOffsets[i]?.rotate ?? 0,
-              }}
-              animate={{ opacity: 1, y: 0, x: 0, rotate: 0 }}
-              transition={{ duration: 0.8, delay: i * 0.05, type: 'spring', stiffness: 100 }}
-              className="inline-block text-transparent bg-clip-text bg-gradient-to-br from-white via-cyan-300 to-violet-500"
-            >
-              {letter === ' ' ? '\u00A0' : letter}
-            </motion.span>
-          ))}
-        </h1>
+      <div className="text-center max-w-6xl mx-auto flex flex-col items-center gap-6">
 
-        <motion.p
-          initial={{ opacity: 0, filter: 'blur(10px)' }}
-          animate={{ opacity: 1, filter: 'blur(0px)' }}
-          transition={{ delay: 1, duration: 1 }}
-          className="text-xl md:text-3xl text-cyan-400 font-light tracking-wide mb-10"
-        >
-          {data.title}
-        </motion.p>
+        {/* Name Header */}
+        <div style={{ maxWidth: `${nameWidth}px` }} className="w-full mx-auto py-2">
+          <motion.h1
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ type: 'spring', stiffness: 100, damping: 20, delay: 0.1 }}
+            className="text-6xl md:text-8xl font-black text-center leading-none text-transparent bg-clip-text bg-gradient-to-r from-white via-cyan-300 to-violet-500"
+          >
+            {data.name}
+          </motion.h1>
+        </div>
 
+        {/* Subtitle / Title */}
+        <div style={{ maxWidth: `${titleWidth}px` }} className="w-full mx-auto">
+          <motion.p
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ type: 'spring', stiffness: 100, damping: 20, delay: 0.3 }}
+            className="text-xl md:text-3xl font-light tracking-wide text-center text-cyan-400"
+          >
+            {data.title}
+          </motion.p>
+        </div>
+
+        {/* Social Connections Link Grid */}
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 1.5 }}
-          className="flex flex-wrap justify-center gap-6"
+          className="flex flex-wrap justify-center gap-6 mt-4"
+          initial="hidden"
+          animate="show"
+          variants={{
+            hidden: {},
+            show: { transition: { staggerChildren: 0.1, delayChildren: 0.5 } },
+          }}
         >
-          {socials.github && (
-            <a
-              href={socials.github}
-              aria-label="GitHub profile"
-              className="p-3 bg-slate-900 rounded-lg hover:bg-cyan-500 hover:text-white transition-all"
+          {socialLinks.map(({ key, href, label, icon: Icon }) => (
+            <motion.a
+              key={key}
+              href={href}
+              aria-label={label}
+              variants={{
+                hidden: { opacity: 0, scale: 0.4, y: 25 },
+                show: { 
+                  opacity: 1, 
+                  scale: 1, 
+                  y: 0,
+                  transition: { type: 'spring', stiffness: 220, damping: 20 } 
+                },
+              }}
+              whileHover={{ y: -5, scale: 1.15 }}
+              className="p-3 bg-slate-900 text-slate-300 border border-slate-800/60 rounded-lg hover:bg-cyan-500 hover:text-white hover:border-cyan-400 transition-colors duration-200"
             >
-              <Github />
-            </a>
-          )}
-          {socials.linkedin && (
-            <a
-              href={socials.linkedin}
-              aria-label="LinkedIn profile"
-              className="p-3 bg-slate-900 rounded-lg hover:bg-cyan-500 hover:text-white transition-all"
-            >
-              <Linkedin />
-            </a>
-          )}
-          {socials.twitter && (
-            <a
-              href={socials.twitter}
-              aria-label="Twitter profile"
-              className="p-3 bg-slate-900 rounded-lg hover:bg-cyan-500 hover:text-white transition-all"
-            >
-              <Twitter />
-            </a>
-          )}
-          {socials.email && (
-            <a
-              href={`mailto:${socials.email}`}
-              aria-label="Email"
-              className="p-3 bg-slate-900 rounded-lg hover:bg-cyan-500 hover:text-white transition-all"
-            >
-              <Mail />
-            </a>
-          )}
+              <Icon size={22} />
+            </motion.a>
+          ))}
         </motion.div>
+
       </div>
     </header>
   );
