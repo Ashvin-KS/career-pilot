@@ -1,3 +1,10 @@
+# [1.37.0](https://github.com/anurag3407/career-pilot/compare/v1.36.0...v1.37.0) (2026-05-27)
+
+
+### Features
+
+* **portfolio:** build complete Polaroid Memories portfolio template ([1cef807](https://github.com/anurag3407/career-pilot/commit/1cef807c71a11408527c99771df557a56a34d703))
+
 # [1.36.0](https://github.com/anurag3407/career-pilot/compare/v1.35.0...v1.36.0) (2026-05-27)
 
 
