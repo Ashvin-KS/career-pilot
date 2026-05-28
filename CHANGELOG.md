@@ -1,3 +1,11 @@
+# [1.74.0](https://github.com/anurag3407/career-pilot/compare/v1.73.0...v1.74.0) (2026-05-28)
+
+
+### Features
+
+* added a Hacker Theme: Projects Section ([7bf881e](https://github.com/anurag3407/career-pilot/commit/7bf881e4a8f73ecc3f836dd1675ad7487cb9554d))
+* implement CyberSecurity_Hacker Contact section ([52775e8](https://github.com/anurag3407/career-pilot/commit/52775e894eb1c9d3f9c522fc758524eadf0b6a28))
+
 # [1.73.0](https://github.com/anurag3407/career-pilot/compare/v1.72.0...v1.73.0) (2026-05-28)
 
 
