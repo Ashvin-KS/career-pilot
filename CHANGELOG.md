@@ -1,3 +1,10 @@
+# [1.93.0](https://github.com/anurag3407/career-pilot/compare/v1.92.1...v1.93.0) (2026-05-29)
+
+
+### Features
+
+* add Mountain Summit portfolio template ([c11a7fd](https://github.com/anurag3407/career-pilot/commit/c11a7fda7860813709fb490e653d3587646aad5b))
+
 ## [1.92.1](https://github.com/anurag3407/career-pilot/compare/v1.92.0...v1.92.1) (2026-05-29)
 
 
