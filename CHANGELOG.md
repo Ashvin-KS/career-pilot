@@ -1,3 +1,10 @@
+# [1.95.0](https://github.com/anurag3407/career-pilot/compare/v1.94.1...v1.95.0) (2026-05-29)
+
+
+### Features
+
+* **portfolio:** implement Medical Clean theme Contact section ([fcd046d](https://github.com/anurag3407/career-pilot/commit/fcd046d9b0439136d5657915a5f497a03c8b67aa))
+
 ## [1.94.1](https://github.com/anurag3407/career-pilot/compare/v1.94.0...v1.94.1) (2026-05-29)
 
 
